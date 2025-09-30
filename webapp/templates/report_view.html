@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card" style="height:80vh;">
+  <h2>Report {{ sha256 }}</h2>
+  <div class="download-links">
+    <a href="{{ url_for('download_pdf', sha256=sha256) }}">Download PDF</a>
+    <a href="{{ url_for('inline_report', sha256=sha256) }}" target="_blank">Open HTML</a>
+  </div>
+  {% if pdf_status and not pdf_status.available %}
+    <div class="status-warning">
+      PDF non disponibile in questo ambiente: {{ pdf_status.error or 'WeasyPrint non configurato' }}
+    </div>
+  {% endif %}
+  {% if structured_reports %}
+  <div class="download-links">
+    <span class="download-label">Export JSON:</span>
+    {% for report in structured_reports %}
+      <a href="{{ url_for('download_structured_json', sha256=sha256, kind=report.key) }}">{{ report.label }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <iframe src="{{ url_for('inline_report', sha256=sha256) }}" style="width:100%; height:90%; border:1px solid rgba(148,163,184,0.25); border-radius:12px; background:#fff;"></iframe>
+</section>
+{% endblock %}

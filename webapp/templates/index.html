@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>Upload Sample</h2>
+  <form action="{{ url_for('upload_sample') }}" method="post" enctype="multipart/form-data">
+    <label for="sample">Windows PE sample (exe/dll/sys)</label>
+    <input type="file" id="sample" name="sample" accept=".exe,.dll,.sys,.bin,.dat,.ocx" required>
+    <button type="submit">Analyze Sample</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Recent Analyses</h2>
+  {% if reports %}
+  <table>
+    <thead>
+      <tr>
+        <th>SHA-256</th>
+        <th>Name</th>
+        <th>ML Confidence</th>
+        <th>Prediction</th>
+        <th>Updated</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in reports %}
+      <tr>
+        <td class="mono"><a href="{{ url_for('view_report', sha256=item.sha) }}">{{ item.sha }}</a></td>
+        <td>{{ item.name or 'n/a' }}</td>
+        <td>
+          {% if item.confidence_percent is not none %}
+            <span class="badge">{{ '%.1f'|format(item.confidence_percent) }}%</span>
+          {% else %}
+            <span class="muted">n/a</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if item.prediction %}
+            {% set pred = item.prediction.lower() %}
+            {% set pred_class = 'pred-' + pred if pred in ['benign','malicious'] else 'pred-unknown' %}
+            <span class="prediction {{ pred_class }}">
+              {{ item.prediction|capitalize }}
+              {% if item.prediction_score is not none %}
+                <span class="mono">{{ '%.2f'|format(item.prediction_score) }}</span>
+              {% endif %}
+            </span>
+          {% else %}
+            <span class="muted">n/a</span>
+          {% endif %}
+        </td>
+        <td>{{ item.updated_at or 'n/a' }}</td>
+        <td>
+          <a href="{{ url_for('view_report', sha256=item.sha) }}">View</a> ·
+          <a href="{{ url_for('download_pdf', sha256=item.sha) }}">PDF</a>
+          {% if item.has_export %}
+          · <a href="{{ url_for('download_structured_json', sha256=item.sha, kind='scan') }}">JSON</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p>No reports yet. Upload a sample to begin.</p>
+  {% endif %}
+</section>
+{% endblock %}

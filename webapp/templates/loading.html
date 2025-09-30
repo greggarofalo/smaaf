@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card loading-card">
+  <h2>Analisi del campione</h2>
+  <p class="mono">SHA-256: {{ sha256 }}</p>
+  <div class="progress-wrapper">
+    <progress id="analysis-progress" value="{{ status.progress }}" max="100"></progress>
+    <div id="progress-percent">{{ status.progress }}%</div>
+  </div>
+  <p id="progress-stage" class="stage">{{ status.stage|capitalize }}</p>
+  <p class="muted" id="progress-note">La pagina si aggiornerà automaticamente al termine dell'analisi.</p>
+  <div id="progress-error" class="status-warning" style="display:none;"></div>
+</section>
+
+<script>
+(function() {
+  const sha = {{ sha256|tojson }};
+  const bar = document.getElementById('analysis-progress');
+  const percentEl = document.getElementById('progress-percent');
+  const stageEl = document.getElementById('progress-stage');
+  const noteEl = document.getElementById('progress-note');
+  const errorEl = document.getElementById('progress-error');
+  let attempts = 0;
+
+  async function poll() {
+    attempts += 1;
+    try {
+      const response = await fetch(`/status/${sha}?t=${Date.now()}`);
+      if (!response.ok) {
+        throw new Error('HTTP ' + response.status);
+      }
+      const data = await response.json();
+      const progress = typeof data.progress === 'number' ? data.progress : 0;
+      bar.value = progress;
+      percentEl.textContent = `${progress}%`;
+      if (data.stage) {
+        stageEl.textContent = data.stage.charAt(0).toUpperCase() + data.stage.slice(1);
+      }
+      if (data.error) {
+        errorEl.textContent = `Errore durante l'analisi: ${data.error}`;
+        errorEl.style.display = 'block';
+        noteEl.textContent = 'Riprova a caricare il campione oppure consulta i log del server.';
+        return;
+      }
+      if (data.done && data.report_url) {
+        window.location.href = data.report_url;
+        return;
+      }
+      if (attempts < 900) {
+        setTimeout(poll, 2000);
+      }
+    } catch (err) {
+      errorEl.textContent = `Impossibile aggiornare lo stato: ${err}`;
+      errorEl.style.display = 'block';
+      noteEl.textContent = 'Il browser non riesce a contattare il server. Ricarica la pagina per riprovare.';
+    }
+  }
+
+  setTimeout(poll, 1500);
+})();
+</script>
+{% endblock %}

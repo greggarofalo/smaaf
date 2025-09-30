@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Static Report – {{ a.file.sha256 or 'unknown' }}</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  :root{
+    --bg:#ffffff; --text:#111827; --muted:#374151;
+    --card:#ffffff; --border:#d1d5db;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  *{ box-sizing:border-box; }
+  body{ background:var(--bg); color:var(--text); font:12.5px/1.45 system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,sans-serif; }
+  h1{ font-size:20px; margin:0 0 6px 0; } h2{ font-size:15px; margin:0 0 6px 0; } h3{ font-size:13px; margin:0 0 4px 0; color:var(--muted); }
+  p,ul,ol{ margin:0 0 6px 0; }
+  .mono{ font-family:var(--mono); font-size:11.5px; }
+  .muted{ color:var(--muted); }
+  .section{ margin:10px 0 14px 0; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px; }
+  .kv{ width:100%; border-collapse:collapse; table-layout:fixed; }
+  .kv td{ padding:3px 4px; vertical-align:top; border-bottom:1px solid var(--border); }
+  .kv td:first-child{ width:34%; font-weight:600; }
+  .table{ width:100%; border-collapse:collapse; table-layout:fixed; }
+  .table th,.table td{ border:1px solid var(--border); padding:5px 6px; vertical-align:top; }
+  .table th{ background:#f3f4f6; font-size:11.5px; text-align:left; }
+  .table td{ word-wrap:break-word; overflow-wrap:anywhere; }
+  .badge{ font-weight:700; font-size:12px; border:1px solid var(--border); padding:2px 6px; border-radius:999px; }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .grid3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+  .list{ padding-left:18px; }
+  .row{ display:flex; flex-wrap:wrap; gap:8px 14px; align-items:baseline; }
+  pre,code{ background:#f6f8fa; border:1px solid var(--border); border-radius:6px; }
+  code{ padding:1px 3px; }
+  pre{ padding:8px; white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere; }
+  .pb{ page-break-before:always; }
+  .pi{ page-break-inside:avoid; }
+  .pill{ display:inline-block; border:1px solid var(--border); border-radius:999px; padding:2px 6px; margin:0 6px 6px 0; font-size:11.5px; }
+  .subtitle{ font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); margin-bottom:4px; }
+  .small{ font-size:11px; }
+  .tiny{ font-size:10px; }
+  .warning{ background:#fef3c7; border-color:#f59e0b; }
+  details summary{ cursor:pointer; }
+  .yara-matches{ display:flex; flex-direction:column; gap:12px; }
+  .yara-match{ border:1px solid var(--border); border-radius:6px; padding:8px; }
+  .yara-match .match-header{ display:flex; gap:8px; flex-wrap:wrap; align-items:baseline; }
+  .yara-match .match-meta{ display:flex; gap:12px; flex-wrap:wrap; margin-top:4px; font-size:11px; color:var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="section card pi">
+  <h1 class="mono">Static Threat Intelligence Report</h1>
+  <div class="row">
+    <div><strong>SHA-256:</strong> <span class="mono">{{ a.file.sha256 or 'n/a' }}</span></div>
+    <div><strong>Name:</strong> <span class="mono">{{ a.file.name or 'n/a' }}</span></div>
+    {% set confidence = a.report_ready.confidence or {} %}
+    {% if confidence.confidence is not none %}
+      <div><span class="badge">ML confidence: {{ '%.1f'|format(confidence.confidence) }}%</span></div>
+    {% endif %}
+    {% if a.prediction %}
+      <div>
+        <strong>ML verdict:</strong>
+        <span class="badge">
+          {{ a.prediction.label|capitalize if a.prediction.label else 'n/a' }}
+          {% if a.prediction.score is not none %}
+            ({{ '%.2f'|format(a.prediction.score) }})
+          {% endif %}
+        </span>
+      </div>
+    {% endif %}
+  </div>
+  <div class="row">
+    <div><strong>IOC counts:</strong>
+      {% for k,v in a.ioc_counts.items() %}
+        <span class="pill mono">{{ k }}={{ v }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% if a.prediction %}
+<div class="section card pi">
+  <div class="subtitle">Machine Learning Classification</div>
+  <p>Verdict: <strong>{{ (a.prediction.label or 'n/a')|capitalize }}</strong>
+    {% if a.prediction.score is not none %}
+      (score {{ '%.3f'|format(a.prediction.score) }})
+    {% endif %}
+  </p>
+  <p>Soglia decisionale: {{ '%.2f'|format(a.prediction.threshold or 0.5) }}</p>
+  {% if a.prediction.probabilities %}
+    <h3>Probabilità stimate</h3>
+    <ul class="list">
+      {% for label, prob in a.prediction.probabilities.items() %}
+        <li><code class="mono">{{ label }}</code>: {{ '%.4f'|format(prob) }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  {% set model = a.prediction.model or {} %}
+  <p class="muted">Modello: {{ model.path or 'n/a' }}{% if model.generated_at %} · aggiornato {{ model.generated_at }}{% endif %}</p>
+</div>
+{% endif %}
+
+<!-- Executive summary + Binary info -->
+<div class="section grid2">
+  <div class="card pi">
+    <div class="subtitle">Executive Summary</div>
+    {% if a.report_ready.summary %}
+      <ul class="list">
+        {% for s in a.report_ready.summary %}<li>{{ s }}</li>{% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Nessun indicatore ad alta priorità rilevato.</p>
+    {% endif %}
+
+    {% if a.report_ready.detection.yara_hits %}
+      <h3>Detection Notes</h3>
+      <p>Regole YARA coinvolte: <span class="mono">{{ a.report_ready.detection.yara_hits | join(', ') }}</span></p>
+      {% if a.report_ready.detection.yara_weak_only %}
+        <p class="muted">Solo pattern di caricamento generico; rivedere manualmente.</p>
+      {% endif %}
+    {% endif %}
+
+    {% if a.report_ready.signals %}
+      <h3>Segnali attivati</h3>
+      <ul class="list">
+        {% for sig in a.report_ready.signals %}
+          <li><code class="mono">{{ sig }}</code></li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if a.report_ready.intel_overview.confirmed %}
+      <h3>Conferme TI</h3>
+      <ul class="list">
+        {% set confirmed = a.report_ready.intel_overview.confirmed %}
+        {% if confirmed.domains %}<li>Domini: <span class="mono">{{ confirmed.domains | join(', ') }}</span></li>{% endif %}
+        {% if confirmed.ips %}<li>IP: <span class="mono">{{ confirmed.ips | join(', ') }}</span></li>{% endif %}
+        {% if confirmed.urls %}<li>URL: <span class="mono">{{ confirmed.urls | join(', ') }}</span></li>{% endif %}
+      </ul>
+    {% endif %}
+  </div>
+
+  <div class="card pi">
+    <div class="subtitle">Binary / PE Info</div>
+    {% set info = a.static.info or {} %}
+    {% set pe = a.static.pe_meta or {} %}
+    <table class="kv">
+      <tr><td>Arch</td><td>{{ info.arch or 'n/a' }} / {{ info.bits or 'n/a' }}-bit</td></tr>
+      <tr><td>Format</td><td>{{ info.format or 'n/a' }} / Endian: {{ info.endian or 'n/a' }}</td></tr>
+      <tr><td>Entry point</td><td class="mono">{{ info.entrypoint if info.entrypoint is not none else (pe.entrypoint or 'n/a') }}</td></tr>
+      <tr><td>Entropy (file)</td><td>{{ a.static.entropy_file if a.static.entropy_file is not none else 'n/a' }}</td></tr>
+      <tr><td>PE Machine</td><td class="mono">{{ pe.machine or 'n/a' }}</td></tr>
+      <tr><td>Subsystem</td><td class="mono">{{ pe.subsystem or 'n/a' }}</td></tr>
+      <tr><td>Compile time (UTC)</td><td class="mono">{{ pe.compile_time or 'n/a' }}</td></tr>
+      <tr><td>Signed</td><td>{{ 'yes' if a.static.signed else 'no' }}</td></tr>
+      <tr><td>imphash</td><td class="mono">{{ a.static.imphash or 'n/a' }}</td></tr>
+      <tr><td>Rich header MD5</td><td class="mono">{{ a.static.rich_header_md5 or 'n/a' }}</td></tr>
+      <tr><td>Overlay size</td><td class="mono">{{ a.static.overlay_size if a.static.overlay_size is not none else 'n/a' }}</td></tr>
+      <tr><td>Strings (count)</td><td class="mono">{{ a.static.strings_count }}</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- Threat intelligence correlation -->
+<div class="section card pi">
+  <div class="subtitle">Threat Intelligence Correlation</div>
+  <table class="table">
+    <thead><tr><th>Categoria</th><th>Indicatori confermati</th><th>Indicatori sospetti</th><th>Fonte</th></tr></thead>
+    <tbody>
+      {% set intel = a.report_ready.intel_overview or {} %}
+      {% set confirmed = intel.confirmed or {} %}
+      {% set suspected = intel.suspected or {} %}
+      {% set sources = intel.sources or {} %}
+      <tr>
+        <td>Domini</td>
+        <td>{% if confirmed.domains %}<span class="mono">{{ confirmed.domains | join(', ') }}</span>{% else %}<span class="muted">n/a</span>{% endif %}</td>
+        <td>{% if suspected.domains %}<span class="mono">{{ suspected.domains | join(', ') }}</span>{% else %}<span class="muted">n/a</span>{% endif %}</td>
+        <td class="mono">{{ sources.urlhaus or 'URLhaus' }}</td>
+      </tr>
+      <tr>
+        <td>IP</td>
+        <td>{% if confirmed.ips %}<span class="mono">{{ confirmed.ips | join(', ') }}</span>{% else %}<span class="muted">n/a</span>{% endif %}</td>
+        <td>{% if suspected.ips %}<span class="mono">{{ suspected.ips | join(', ') }}</span>{% else %}<span class="muted">n/a</span>{% endif %}</td>
+        <td class="mono">{{ sources.feodo or 'Feodo Tracker' }}</td>
+      </tr>
+      <tr>
+        <td>URL</td>
+        <td>{% if confirmed.urls %}<span class="mono">{{ confirmed.urls | join(', ') }}</span>{% else %}<span class="muted">n/a</span>{% endif %}</td>
+        <td>{% if suspected.urls %}<span class="mono">{{ suspected.urls | join(', ') }}</span>{% else %}<span class="muted">n/a</span>{% endif %}</td>
+        <td class="mono">{{ sources.urlhaus or 'URLhaus' }}</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="muted" style="margin-top:6px;">Le fonti indicano indicatori osservati attivi. Validare prima dell'uso operativo.</p>
+</div>
+
+<!-- Detection & hunting -->
+<div class="section card pi">
+  <div class="subtitle">Detection &amp; Hunting Considerations</div>
+  <div class="grid2">
+    <div>
+      <h3>YARA Coverage</h3>
+      <table class="kv compact">
+        <tr><td>Regole cache</td><td class="mono">{{ a.report_ready.detection.rules_cached }}</td></tr>
+        <tr><td>Match totali</td><td class="mono">{{ a.signatures | length }}</td></tr>
+        <tr><td>Match forti</td><td class="mono">{{ a.report_ready.detection.yara_hits | length }}</td></tr>
+        <tr><td>Solo loader?</td><td class="mono">{{ 'yes' if a.report_ready.detection.yara_weak_only else 'no' }}</td></tr>
+        {% set compile_warnings = a.report_ready.detection.yara_compile_warnings or [] %}
+        <tr><td>Avvisi compilazione</td><td class="mono">{{ compile_warnings | length }}</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Artefatti locali</h3>
+      {% set public_ipv4 = a.report_ready.notable_iocs.public_ipv4 or [] %}
+      {% set filesystem = a.report_ready.notable_iocs.filesystem or [] %}
+      {% if public_ipv4 %}
+        <p>IPv4 pubblici osservati: <span class="mono">{{ public_ipv4 | join(', ') }}</span></p>
+      {% endif %}
+      {% if filesystem %}
+        <p>Percorsi potenzialmente droppati:</p>
+        <ul class="list">{% for path in filesystem %}<li><code class="mono">{{ path }}</code></li>{% endfor %}</ul>
+      {% endif %}
+      {% if not public_ipv4 and not filesystem %}
+        <p class="muted">Nessun artefatto locale di rilievo.</p>
+      {% endif %}
+
+      <h3>API sospette</h3>
+      {% set api = a.report_ready.notable_iocs.suspicious_apis or [] %}
+      {% if api %}
+        <ul class="list">{% for v in api %}<li><code class="mono">{{ v }}</code></li>{% endfor %}</ul>
+      {% else %}
+        <p class="muted">Nessuna API sospetta in lista.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if a.report_ready.detection.yara_compile_warnings %}
+<div class="section card warning">
+  <div class="subtitle">YARA compilation warnings</div>
+  <p class="muted">Le regole YARA fornite presentano avvisi di performance. I pattern elencati potrebbero rallentare la scansione o produrre falsi positivi.</p>
+  <details>
+    <summary>Mostra avvisi ({{ a.report_ready.detection.yara_compile_warnings | length }})</summary>
+    <ul class="list">
+      {% for line in a.report_ready.detection.yara_compile_warnings %}
+        <li><code class="mono">{{ line }}</code></li>
+      {% endfor %}
+    </ul>
+  </details>
+</div>
+{% endif %}
+
+{% if a.report_ready.detection.yara_matches %}
+<div class="section card pi">
+  <div class="subtitle">Dettaglio match YARA</div>
+  <div class="yara-matches">
+    {% for match in a.report_ready.detection.yara_matches %}
+      <div class="yara-match">
+        <div class="match-header">
+          <strong>{{ match.rule }}</strong>
+          {% if match.namespace %}<span class="mono">({{ match.namespace }})</span>{% endif %}
+          {% if match.tags %}<span class="mono">[{{ match.tags | join(', ') }}]</span>{% endif %}
+        </div>
+        <div class="match-meta">
+          <span class="mono">Regola: {{ match.rule_path }}</span>
+          {% if match.meta %}
+            <span class="mono">Meta: {% for key, value in match.meta.items() %}{{ key }}={{ value }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+          {% endif %}
+        </div>
+        {% if match.strings %}
+          <table class="table compact" style="margin-top:8px;">
+            <thead>
+              <tr>
+                <th style="width:18%">Identificatore</th>
+                <th>Occorrenze</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for string in match.strings %}
+                {% set instances = string.instances or [] %}
+                <tr>
+                  <td class="mono">{{ string.identifier }}</td>
+                  <td>
+                    {% if instances %}
+                      {% for inst in instances[:3] %}
+                        <div class="mono small">
+                          offset=0x{{ "%X" | format(inst.offset or 0) }}, len={{ inst.length or 0 }}
+                          {% if inst.matched_text %}
+                            — “{{ inst.matched_text | truncate(64, True, '…') }}”
+                          {% endif %}
+                        </div>
+                        {% if inst.matched_hex %}
+                          <div class="mono tiny">{{ inst.matched_hex[:64] }}{% if inst.matched_hex | length > 64 %}…{% endif %}</div>
+                        {% endif %}
+                      {% endfor %}
+                      {% if instances | length > 3 %}
+                        <div class="muted tiny">(+{{ instances | length - 3 }} ulteriori occorrenze)</div>
+                      {% endif %}
+                    {% else %}
+                      <span class="muted">Nessun dettaglio disponibile</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% set analysis_extras = a.report_ready.get('analysis_extras') %}
+{% if analysis_extras is mapping %}
+  {% set floss_extras = analysis_extras.get('floss_strings') %}
+  {% if floss_extras is mapping and floss_extras %}
+<div class="section card pi">
+  <div class="subtitle">String Extraction Highlights</div>
+  {% set auto = floss_extras.get('auto') or [] %}
+  {% set manual = floss_extras.get('manual') or [] %}
+  {% if auto %}
+    <h3>Auto-generated strings</h3>
+    <ul class="list">{% for entry in auto %}<li><code class="mono">{{ entry }}</code></li>{% endfor %}</ul>
+  {% endif %}
+  {% if manual %}
+    <h3>Curated strings</h3>
+    <ul class="list">{% for entry in manual %}<li><code class="mono">{{ entry }}</code></li>{% endfor %}</ul>
+  {% endif %}
+  {% if not auto and not manual %}
+    <p class="muted">Nessuna stringa FLOSS disponibile.</p>
+  {% endif %}
+</div>
+  {% endif %}
+{% endif %}
+
+<!-- Operational observations -->
+<div class="section card pi">
+  <div class="subtitle">Operational Observations</div>
+  <div class="grid2">
+    <div>
+      <h3>Domini sospetti (non confermati)</h3>
+      {% set suspected_domains = (a.report_ready.intel_overview.suspected.domains or []) %}
+      {% if suspected_domains %}
+        <ul class="list">{% for v in suspected_domains %}<li><code class="mono">{{ v }}</code></li>{% endfor %}</ul>
+      {% else %}
+        <p class="muted">Nessuno.</p>
+      {% endif %}
+    </div>
+    <div>
+      <h3>Percorsi di drop</h3>
+      {% set drops = a.report_ready.notable_iocs.filesystem or [] %}
+      {% if drops %}<ul class="list">{% for v in drops %}<li><code class="mono">{{ v }}</code></li>{% endfor %}</ul>{% else %}<p class="muted">Nessuno.</p>{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Sections with highest entropy -->
+<div class="section card pi">
+  <div class="subtitle">Sections (Top by Entropy)</div>
+  {% if a.static.sections_top %}
+    <table class="table">
+      <thead><tr>
+        <th style="width:18%">Name</th>
+        <th style="width:12%">Entropy</th>
+        <th style="width:20%">Virtual Size</th>
+        <th style="width:20%">Raw Size</th>
+        <th>Characteristics</th>
+      </tr></thead>
+      <tbody>
+        {% for s in a.static.sections_top %}
+          <tr>
+            <td class="mono">{{ s.name }}</td>
+            <td>{{ s.entropy if s.entropy is not none else 'n/a' }}</td>
+            <td class="mono">{{ s.vsize if s.vsize is not none else 'n/a' }}</td>
+            <td class="mono">{{ s.rsize if s.rsize is not none else 'n/a' }}</td>
+            <td class="mono">{{ s.chars if s.chars is not none else '' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No section data available.</p>
+  {% endif %}
+</div>
+
+<!-- IOCs (complete list) -->
+<div class="section card pi">
+  <div class="subtitle">Indicators (Complete)</div>
+  {% set ioc_keys = ['urls','hosts','domains','ipv4','ipv6','emails','regkeys','winpaths','hashes_md5','hashes_sha256'] %}
+  {% if a.iocs %}
+    {% for k in ioc_keys %}
+      {% set arr = (a.iocs.get(k) or []) %}
+      <h3>{{ k|upper }} <span class="muted">({{ arr|length }})</span></h3>
+      {% if arr %}
+        <ul class="list">
+          {% for v in arr %}<li><code class="mono">{{ v }}</code></li>{% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">None.</p>
+      {% endif %}
+    {% endfor %}
+  {% else %}
+    <p class="muted">None.</p>
+  {% endif %}
+</div>
+
+<!-- YARA matches -->
+<div class="section card pi">
+  <div class="subtitle">YARA Matches</div>
+  {% if a.signatures and a.signatures|length > 0 %}
+    <table class="table">
+      <thead><tr><th style="width:28%">Rule</th><th>Details</th></tr></thead>
+      <tbody>
+        {% for m in a.signatures %}
+          <tr>
+            <td class="mono">{{ m.rule or m.rule_name or 'unknown' }}</td>
+            <td>
+              {% set out = (m.output or '') %}
+              {% if out %}
+                <pre class="mono">{{ out }}</pre>
+              {% else %}
+                <span class="muted">(no details)</span>
+              {% endif %}
+              {% if m.stderr %}<div class="muted"><strong>stderr:</strong> <code class="mono">{{ m.stderr }}</code></div>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No matches.</p>
+  {% endif %}
+</div>
+
+<!-- Imports / Exports -->
+<div class="section grid2">
+  <div class="card pi">
+    <div class="subtitle">Imports</div>
+    {% set imports = a.static.imports or [] %}
+    {% if imports %}
+      <ul class="list">
+        {% for imp in imports %}
+          {% if imp is mapping %}
+            {% set name = imp.name or imp.get('name') %}
+          {% else %}
+            {% set name = imp %}
+          {% endif %}
+          <li><span class="mono">{{ name }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">None.</p>
+    {% endif %}
+  </div>
+  <div class="card pi">
+    <div class="subtitle">Exports</div>
+    {% set exports = a.static.exports or [] %}
+    {% if exports %}
+      <ul class="list">
+        {% for ex in exports %}
+          {% if ex is mapping %}
+            {% set name = ex.name or ex.get('name') %}
+          {% else %}
+            {% set name = ex %}
+          {% endif %}
+          <li><span class="mono">{{ name }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">None.</p>
+    {% endif %}
+  </div>
+</div>
+
+</body>
+</html>
