@@ -1,5 +1,150 @@
 # Static Malware Analysis Automation Framework (SMAAF)
 
+## Overview
+SMAAF is a modular framework for static analysis of Windows PE samples.  
+The project combines automated disassembly, extraction of Indicators of Compromise (IoCs), correlation with open threat intelligence feeds, and classification via a locally trainable machine learning model.
+
+The ecosystem consists of a CLI, Flask webapp, and HTML/PDF reporting engine.  
+All modules can be reused individually or orchestrated through `cli.py`.
+
+### Main Objectives
+* Batch disassembly (Radare2) and enrichment of PE metadata.
+* Extract IoCs from strings/ASM, filter noisy signals, and correlate with public feeds (URLhaus, Feodo).
+* Apply an ML predictor that returns a **confidence percentage** rather than arbitrary severity levels.
+* Generate readable reports and structured JSON exports for integration with external pipelines.
+* Provide a webapp with upload page and real-time progress tracking.
+
+---
+
+## Source Structure
+```
+analyzer/
+ ├── __init__.py
+ ├── ioc/                     # IOC extraction, TI feed handling, YARA
+ └── ioc_signatures.py        # Supplemental regex rules
+
+collector/
+ └── download.py              # MalwareBazaar integration
+
+core/
+ ├── artifacts.py             # JSON/PDF handling and data merging
+ ├── db.py                    # Local dataset helpers
+ └── settings.py              # Paths and global variables
+
+disassembler/
+ └── r2_scan.py               # Radare2 wrapper for JSON/ASM
+
+predictor/
+ ├── extractor.py             # Feature engineering for ML model
+ ├── inference.py             # Runtime scoring (PredictorEngine)
+ └── trainer.py               # Training pipeline (scikit-learn)
+
+reporting/
+ ├── engine.py                # HTML→PDF rendering
+ ├── structured_export.py     # Structured JSON export
+ └── templates/               # Jinja2 templates
+
+scripts/
+ └── evaluate_yara_rules.py   # YARA bundle quality analysis
+
+webapp/
+ ├── __init__.py              # Flask application
+ ├── __main__.py              # Developer entrypoint
+ └── templates/               # Report view, index, loading page
+
+cli.py                        # Unified CLI entrypoint
+```
+
+---
+
+## Highlighted Modules
+### Disassembler (`disassembler/r2_scan.py`)
+* Disassembly via `r2pipe`, JSON output, and ASM dump.
+* Extracts functions, imports/exports, section entropy, overlays, TLS callbacks, Authenticode signatures, and additional PE metadata.
+
+### Analyzer & IoC (`analyzer/ioc/*`)
+* Normalizes strings and ASM, applies robust regex for URLs, domains, IPv4/IPv6, registry, Windows paths, and hashes.
+* Identifies significant public IPs, flags suspicious APIs, and populates the “notable IoC” section of the report.
+* Correlates with TI feeds (URLhaus, Feodo). Confirmed and suspicious lists are propagated to the report and structured JSON.
+* YARA management via `YaraManager`, bundle compilation, irrelevant warning filtering, and rule counting.
+  * **Primary YARA source:** [HydraDragonAntivirus/hydradragon/yara](https://github.com/HydraDragonAntivirus/HydraDragonAntivirus)
+  * Other sources: `Neo23x0/signature-base`, `Yara-Rules/rules` (Windows subset).
+
+### Predictor (`predictor/`)
+* `PEFeatureExtractor` implements the historical numeric schema to ensure compatibility with legacy datasets.
+* `PredictorTrainer` trains a `StandardScaler + RandomForest` pipeline and produces `predictor_model.joblib` and `training_summary.json`.
+* `PredictorEngine` provides runtime inference with decision threshold, per-class probability, and **confidence percentage** for reporting.
+
+### Reporting (`reporting/`)
+* `engine.py` generates HTML and PDF reports (WeasyPrint).
+* `report.html.j2` displays ML confidence, triggered signals, TI feeds, and significant YARA rules. Non-essential YARA warnings are filtered automatically.
+* `structured_export.py` generates structured JSON exports (scan + network) for SIEM/SOAR pipelines.
+
+### Webapp (`webapp/`)
+* Asynchronous upload with thread pool and **dynamic loading page**: the progress bar queries `/status/<sha>` until analysis completes.
+* List of recent reports with ML confidence, quick access to PDF and JSON exports.
+* All pipeline steps (disassembly, ML, IOC, report) are tracked and saved in the artifact.
+
+### YARA Script (`scripts/evaluate_yara_rules.py`)
+* Compiles (optionally forcing source update) and reports unique rule count, per-source breakdown, and compilation warnings (performance, deprecated, etc.).
+* Optional JSON output.
+
+---
+
+## Main Dependencies
+* **Python 3.9+**
+* **Radare2** (>=5.x) with `r2pipe`
+* **yara/yarac** CLI in PATH
+* **Jinja2**, **WeasyPrint** (for PDF)
+* **pefile**, **python-magic**, **pyzipper**, **requests**
+* **capstone**, **numpy**, **scikit-learn**, **joblib**
+* (optional) **FLOSS** for obfuscated strings
+
+On macOS ARM, environment variables `PKG_CONFIG_PATH`, `GI_TYPELIB_PATH`, and `DYLD_FALLBACK_LIBRARY_PATH` may need to be exported.  
+`scripts/env.darwin.sh` automates this.
+
+---
+
+## Quick Usage
+```bash
+# 1. Disassemble (or copy) Radare2 JSON into disassembler/disassembled/json/<sha>.json
+python cli.py assemble <sha256>
+python cli.py predict <sha256>
+python cli.py iocs <sha256>
+python cli.py report <sha256>
+
+# Full pipeline
+python cli.py pipeline <sha256>
+```
+
+### Web Interface
+```bash
+export FLASK_APP=webapp:create_app
+flask run --host 0.0.0.0 --port 5000
+```
+Upload a sample via the browser and track progress in real-time. Reports (HTML/PDF) and structured JSON exports are available upon completion.
+
+### YARA Evaluation Script
+```bash
+python scripts/evaluate_yara_rules.py --force-update --json yara_summary.json
+```
+
+---
+
+## Produced Artifacts
+* `artifacts/<sha>.json` – unified artifact with static, prediction, IoC.
+* `artifacts/<sha>.pdf` and `artifacts/<sha>.html` – analyst reports.
+* `artifacts/structured/<sha>/` – structured JSON exports (scan + network).
+* `predictor_artifacts/` – trained ML model and summary.
+
+---
+
+## License & Contributions
+The project is intended for research and educational purposes. Use the framework in isolated environments and respect OSINT source policies.
+
+---
+# Static Malware Analysis Automation Framework (SMAAF)
+
 ## Panoramica
 SMAAF è un framework modulare per l’analisi statica di campioni Windows PE. Il
 progetto combina disassemblaggio automatico, estrazione di Indicatori di
@@ -171,3 +316,4 @@ python scripts/evaluate_yara_rules.py --force-update --json yara_summary.json
 Il progetto è destinato a scopi di ricerca e formazione. Si consiglia di
 utilizzare il framework in ambienti isolati e rispettare le policy delle fonti
 OSINT dai quali vengono scaricati i campioni.
+
