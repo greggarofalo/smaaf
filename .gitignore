@@ -11,3 +11,10 @@
 /.venv1
 /predictor_artifacts/predictor_model.joblib
 /state.sqlite3
+# Cache e file temporanei
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+*.egg
+.DS_STORE
