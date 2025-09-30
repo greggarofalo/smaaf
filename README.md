@@ -1,5 +1,8 @@
-# Static Malware Analysis Automation Framework (SMAAF)
+<p align="center">
+  <img src="img/logo.png" alt="SMAAF" title="SMAAF" width="200">
+</p>
 
+# Static Malware Analysis Automation Framework (SMAAF)
 ## Overview
 SMAAF is a modular framework for static analysis of Windows PE samples.  
 The project combines automated disassembly, extraction of Indicators of Compromise (IoCs), correlation with open threat intelligence feeds, and classification via a locally trainable machine learning model.
